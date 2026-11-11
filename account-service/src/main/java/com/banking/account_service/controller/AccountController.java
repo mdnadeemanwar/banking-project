@@ -70,10 +70,9 @@ public class AccountController {
      * @param accountNumber
      * @return
      */
-    @PostMapping("/{accountNumber}/block")
+    @PatchMapping("/{accountNumber}/block")
     public ResponseEntity<String> blockAccount(@PathVariable String accountNumber) {
-        accountService.blockAccountByAccountNumber(accountNumber);
-        return ResponseEntity.ok("Accont has been blocked");
+        return ResponseEntity.ok(accountService.blockAccountByAccountNumber(accountNumber));
     }
 
     /**
@@ -85,8 +84,8 @@ public class AccountController {
     public ResponseEntity<String> deductBalance(
             @PathVariable String accountNumber,
             @RequestParam BigDecimal amount
-    ){
-        accountService.deductBalance(accountNumber,amount);
+    ) {
+        accountService.deductBalance(accountNumber, amount);
         return ResponseEntity.ok("Amount deducated Successfully");
     }
 
@@ -101,17 +100,10 @@ public class AccountController {
     public ResponseEntity<String> creditBalance(
             @PathVariable String accountNumber,
             @RequestParam BigDecimal amount
-    ){
-        accountService.creditBalance(accountNumber,amount);
+    ) {
+        accountService.creditBalance(accountNumber, amount);
         return ResponseEntity.ok("Balance Credited Successfully!");
     }
-
-
-
-
-
-
-
 
 
 }
