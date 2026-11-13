@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -109,6 +110,25 @@ public class TransactionService {
 
     }
 
+
+    public TransactionResponse getTransaction(String transactionId) {
+        return mapToResponse(transactionRepository
+                .findById(transactionId)
+                .orElseThrow(() -> new RuntimeException("Transaction Not found")));
+    }
+
+    public List<TransactionResponse> getAllTransaction(String accountnumber) {
+        return transactionRepository
+                .findBySenderAccountNumberOrderByCreatedAtDesc(accountnumber)
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    public TransactionResponse verifyOTP(String transactionId, String otp) {
+        return null;
+    }
+
     private TransactionResponse mapToResponse(Transaction savedTransaction) {
         return TransactionResponse.builder()
                 .id(savedTransaction.getId())
@@ -122,17 +142,5 @@ public class TransactionService {
                 .createdAt(savedTransaction.getCreatedAt())
                 .build();
 
-    }
-
-    public TransactionResponse getTransaction(String transactionId) {
-        return null;
-    }
-
-    public List<TransactionResponse> getAllTransaction(String accountnumber) {
-        return null;
-    }
-
-    public TransactionResponse verifyOTP(String transactionId, String otp) {
-        return null;
     }
 }
