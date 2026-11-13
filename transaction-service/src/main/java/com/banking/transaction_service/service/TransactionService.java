@@ -1,17 +1,24 @@
 package com.banking.transaction_service.service;
 
+import com.banking.transaction_service.client.AccountServiceClient;
 import com.banking.transaction_service.dto.TransactionResponse;
 import com.banking.transaction_service.dto.TransferRequest;
+import com.banking.transaction_service.entity.Transaction;
+import com.banking.transaction_service.entity.TransactionStatus;
+import com.banking.transaction_service.entity.TransactionType;
 import com.banking.transaction_service.repository.TransactionRepository;
+import feign.FeignException;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -28,6 +35,9 @@ public class TransactionService {
     private static final String TRANSACTION_COMPLETED_TOPIC = "transaction.completed";
     private static final String TRANSACTION_REFUNDED_TOPIC = "transaction.refunded";
 
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    private final AccountServiceClient accountServiceClient;
 
     /**
      * SAGA step no 1 :- initiate transfer
@@ -45,37 +55,92 @@ public class TransactionService {
         String receiverAccountNo = transferRequest.getReceiverAccountNumber();
         BigDecimal amount = transferRequest.getAmount();
 
+
         log.info("SAGA START - Transfer : {} -> {} amount: {}", senderAccountNo, receiverAccountNo, amount);
 
         // 1. validate: sender != receiver
-        if (transferRequest.getSenderAccountNumber().equals(transferRequest.getReceiverAccountNumber())) {
+        if (senderAccountNo.equals(receiverAccountNo)) {
             throw new RuntimeException("Sender and Receiver account can not be the same");
         }
 
-        // 2. generate transactionId
 
+        // 2. generate transactionId
         String transactionId = UUID.randomUUID().toString();
 
-        // 3. deduct from sender (call account-service)
+        // 3. save transaction with status PROCESSING
+        Transaction transaction = Transaction.builder()
+                .senderAccountNumber(senderAccountNo)
+                .receiverAccountNumber(receiverAccountNo)
+                .amount(amount)
+                .type(TransactionType.TRANSFER)
+                .status(TransactionStatus.PROCESSING)
+                .description(transferRequest.getDescription())
+                .referenceNumber(transactionId)
+                .build();
 
+        Transaction savedTransaction = transactionRepository.save(transaction);
+        log.info("Transaction saved as PROCESSING : {}", savedTransaction.getId());
 
-        // 4. save transaction with status PROCESSING
+        // 4. deduct from sender (call account-service)
+        try {
+            accountServiceClient.deductBalance(senderAccountNo, amount);
+        } catch (FeignException e) {
+            savedTransaction.setStatus(TransactionStatus.FAILED);
+            transactionRepository.save(savedTransaction);
+            log.error("Debit failed for transaction id :{}", transactionId, e);
+            throw new RuntimeException("Transfer failed: could not debit sender account");
+        }
+
 
         // 5. publish event to Kafka for the fraud check
 
+        TransactionEventConsumer transactionEventConsumer = new TransactionEventConsumer(
+                transactionId,
+                savedTransaction.getSenderAccountNumber(),
+                savedTransaction.getReceiverAccountNumber(),
+                savedTransaction.getAmount()
+        );
+
+        kafkaTemplate.send(TRANSACTION_INITIATED_TOPIC, transactionEventConsumer);
+        log.info("Published transaction.initiated, transactionId: {}", transactionId);
+
+
         // 6. return TransactionResponse
+        return mapToResponse(savedTransaction);
 
     }
 
-    public @Nullable TransactionResponse getTransaction(String transactionId) {
+
+    public TransactionResponse getTransaction(String transactionId) {
+        return mapToResponse(transactionRepository
+                .findById(transactionId)
+                .orElseThrow(() -> new RuntimeException("Transaction Not found")));
+    }
+
+    public List<TransactionResponse> getAllTransaction(String accountnumber) {
+        return transactionRepository
+                .findBySenderAccountNumberOrderByCreatedAtDesc(accountnumber)
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    public TransactionResponse verifyOTP(String transactionId, String otp) {
         return null;
     }
 
-    public @Nullable List<TransactionResponse> getAllTransaction(String accountnumber) {
-        return null;
-    }
+    private TransactionResponse mapToResponse(Transaction savedTransaction) {
+        return TransactionResponse.builder()
+                .id(savedTransaction.getId())
+                .referenceNumber(savedTransaction.getReferenceNumber())
+                .senderAccountNumber(savedTransaction.getSenderAccountNumber())
+                .receiverAccountNumber(savedTransaction.getReceiverAccountNumber())
+                .amount(savedTransaction.getAmount())
+                .type(savedTransaction.getType())
+                .status(savedTransaction.getStatus())
+                .description(savedTransaction.getDescription())
+                .createdAt(savedTransaction.getCreatedAt())
+                .build();
 
-    public @Nullable TransactionResponse verifyOTP(String transactionId, String otp) {
-        return null;
     }
 }

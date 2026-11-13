@@ -1,4 +1,10 @@
 package com.banking.transaction_service.service;
 
-public class TransactionEventConsumer {
-}
+import java.math.BigDecimal;
+
+public record TransactionEventConsumer (
+    String transactionId,
+    String senderAccountNumber,
+    String receiverAccountNumber,
+    BigDecimal amount
+    ){}

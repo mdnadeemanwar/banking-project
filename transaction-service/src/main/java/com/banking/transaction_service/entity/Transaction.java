@@ -3,6 +3,7 @@ package com.banking.transaction_service.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 @Table(name = "transactions")
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 public class Transaction {
 
     @Id
